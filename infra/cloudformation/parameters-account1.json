@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "AppName",
+    "ParameterValue": "github-runner"
+  },
+  {
+    "ParameterKey": "GithubRepoOwner",
+    "ParameterValue": "cybercussion"
+  },
+  {
+    "ParameterKey": "GithubRepo",
+    "ParameterValue": "aws-codebuild-gh-runner"
+  },
+  {
+    "ParameterKey": "CodeBuildImage",
+    "ParameterValue": "aws/codebuild/standard:7.0"
+  },
+  {
+    "ParameterKey": "CodeBuildEnvironmentComputeType",
+    "ParameterValue": "BUILD_GENERAL1_SMALL"
+  }
+]

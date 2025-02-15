@@ -1,0 +1,61 @@
+version: 2
+updates:
+  # 📌 Node.js - Service B & C
+  - package-ecosystem: "npm"
+    directory: "/services/service-b/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "[npm update]"
+
+  - package-ecosystem: "npm"
+    directory: "/services/service-c/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "[npm update]"
+
+  # 📌 Python - Service A
+  - package-ecosystem: "pip"
+    directory: "/services/service-a/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "[pip update]"
+
+  # 📌 Docker - Per Service
+  - package-ecosystem: "docker"
+    directory: "/services/service-a/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "[docker update]"
+
+  - package-ecosystem: "docker"
+    directory: "/services/service-b/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "[docker update]"
+
+  - package-ecosystem: "docker"
+    directory: "/services/service-c/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "[docker update]"
+
+  # 📌 GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "[actions update]"

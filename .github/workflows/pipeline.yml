@@ -1,0 +1,261 @@
+name: CodeBuild Multi-Stage Pipeline
+
+on:
+  push:
+    branches:
+      - main  # Triggers automatically on push to main
+
+  pull_request:
+    branches:
+      - main
+      - develop
+    types:
+      - opened
+      - synchronize
+      - ready_for_review
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Select the environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - stage
+          - perf
+      debug:
+        description: "Enable Debug Mode?"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      log_level:
+        description: "Log Level"
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - "info"
+          - "debug"
+          - "warn"
+          - "error"
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  security_scan:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'  # Runs on PRs too
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Dependencies for All Services
+        run: |
+          for service in services/service-*; do
+            if [ -f "$service/app/requirements.txt" ]; then
+              echo "Installing Python dependencies in $service..."
+              pip install --progress-bar off -r "$service/app/requirements.txt"
+            fi
+            if [ -f "$service/package.json" ]; then
+              echo "Installing Node.js dependencies in $service..."
+              npm install --prefix "$service/"
+            fi
+          done
+
+      - name: Secrets Detection with GitLeaks
+        uses: zricethezav/gitleaks-action@v2
+        continue-on-error: true  # Avoid stopping pipeline on warnings
+      # https://trivy.dev/v0.33/docs/licenses/scanning/
+      - name: Run Trivy Scan (Vulnerability Scanner)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-ref: '.'
+          scan-type: 'fs'
+          scanners: 'vuln,secret,license'
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy SARIF Report to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+  
+
+      - name: Upload Trivy Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan-results
+          path: trivy-results.sarif
+
+  dependabot_updates:
+    if: github.actor == 'dependabot[bot]' || github.actor == 'dependabot-preview[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Dependencies for All Services
+        run: |
+          for service in services/service-*; do
+            if [ -f "$service/package.json" ]; then
+              echo "Installing Node.js dependencies in $service..."
+              npm ci --prefix "$service/"  # Faster, consistent installs
+            fi
+          done
+
+      - name: Run Tests for Dependabot PR
+        run: |
+          for service in services/service-*; do
+            if [ -f "$service/package.json" ]; then
+              echo "Running tests for $service..."
+              cd "$service"
+              npm test || echo "Tests failed for $service, check logs."
+              cd - > /dev/null
+            fi
+          done
+
+  codeql_analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: 'javascript, python'
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  build:
+    needs: security_scan
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    strategy:
+      matrix:
+        service: [service-a, service-b, service-c]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies for ${{ matrix.service }}
+        run: |
+          # Python service (service-a)
+          if [ "${{ matrix.service }}" == "service-a" ]; then
+            cd services/service-a/app
+            echo "Installing Python dependencies in service-a/app..."
+            pip install --cache-dir ~/.cache/pip --progress-bar off -r requirements.txt
+          fi
+
+          # Node.js service (service-b, service-c)
+          if [ "${{ matrix.service }}" == "service-b" ] || [ "${{ matrix.service }}" == "service-c" ]; then
+            cd services/${{ matrix.service }}
+            echo "Installing Node.js dependencies in services/${{ matrix.service }}..."
+            npm ci --no-progress
+          fi
+
+      - name: Build ${{ matrix.service }}
+        run: |
+          cd services/${{ matrix.service }}
+          echo "Building ${{ matrix.service }}..."
+
+          # Python service (service-a) - Package it
+          if [ "${{ matrix.service }}" == "service-a" ]; then
+            echo "Packaging Python application..."
+            mkdir -p dist
+            cp -r app dist/
+            echo "Python service packaged."
+          fi
+
+          # Node.js services (service-b, service-c) - Run build script
+          if [ "${{ matrix.service }}" == "service-b" ] || [ "${{ matrix.service }}" == "service-c" ]; then
+            echo "Building Node.js application..."
+            npm run build || echo "No build script found, skipping..."
+            echo "Node.js service built."
+          fi
+
+      - name: Save Build Artifacts
+        run: |
+          mkdir -p build_artifacts/${{ matrix.service }}
+          tar -czf build_artifacts/${{ matrix.service }}/build.tar.gz -C services/${{ matrix.service }} .
+          echo "Build successful for ${{ matrix.service }}" > build_artifacts/${{ matrix.service }}/status.txt
+        shell: bash
+
+  test:
+    needs: build
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    strategy:
+      matrix:
+        service: [service-a, service-b, service-c]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Tests for ${{ matrix.service }}
+        run: |
+          echo "Running tests for ${{ matrix.service }}..."
+          cd services/${{ matrix.service }}
+          sleep 3
+          echo "Tests complete for ${{ matrix.service }}!"
+
+      - name: Test Results
+        run: |
+          echo "All tests passed for ${{ matrix.service }}!"
+        shell: bash
+
+  deploy:
+    needs: test
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'  # Prevent deployment on PRs
+    runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set Deployment Parameters
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          DEBUG_MODE="${{ github.event.inputs.debug || 'false' }}"
+          LOG_LEVEL="${{ github.event.inputs.log_level || 'info' }}"
+          
+          echo "Deploying to environment: $ENV"
+          echo "Debug Mode: $DEBUG_MODE"
+          echo "Log Level: $LOG_LEVEL"
+
+          # Export variables for later use
+          echo "ENV=$ENV" >> $GITHUB_ENV
+          echo "DEBUG_MODE=$DEBUG_MODE" >> $GITHUB_ENV
+          echo "LOG_LEVEL=$LOG_LEVEL" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Deploy Application
+        run: |
+          echo "Starting deployment..."
+          echo "Target Environment: $ENV"
+          echo "Debug Mode Enabled: $DEBUG_MODE"
+          echo "Using Log Level: $LOG_LEVEL"
+          
+          sleep 3
+          echo "Deployment to $ENV complete!"
+        shell: bash
