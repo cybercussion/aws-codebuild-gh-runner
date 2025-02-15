@@ -1,0 +1,25 @@
+name: CodeBuild Test
+
+on:
+  push:
+    branches:
+      - main  # Adjust to the branch you want to trigger on
+
+jobs:
+  build:
+    runs-on:
+        # This "github-runner" name matters.  Has to match the CodeBuild Runner you made.
+        # Also check your settings->webhooks (codebuild creates one if codestar connection is setup correctly)
+      - codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Print GitHub Context
+        run: echo "Running on AWS CodeBuild"
+
+      - name: Build
+        run: |
+          echo "Building project..."
+          sleep 5  # Simulating a build step
+          echo "Build complete!"
