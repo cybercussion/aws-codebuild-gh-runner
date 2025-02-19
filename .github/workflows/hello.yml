@@ -36,86 +36,65 @@ on:
           - "error"
 
 jobs:
-  # Manual way to run security scans.
-  # security_scan:
-  #   if: github.event_name == 'push'  # Only runs on push, not manual triggers
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Checkout Repository
-  #       uses: actions/checkout@v4
-
-  #     - name: Secrets Detection with GitLeaks
-  #       uses: zricethezav/gitleaks-action@v2
-  #       continue-on-error: true  # Avoid stopping pipeline on warnings
-
-  #     - name: Install Trivy for Security Scanning
-  #       run: |
-  #         echo "Detecting Ubuntu version..."
-  #         UBUNTU_VERSION=$(lsb_release -rs)
-          
-  #         if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
-  #           echo "Ubuntu 24.04 detected, installing Trivy via Snap..."
-  #           sudo snap install trivy
-  #         else
-  #           echo "Installing Trivy from GitHub releases..."
-  #           TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -o '"tag_name": *"v[0-9.]*"' | sed -E 's/"tag_name": *"v?([^"]+)"/\1/')
-  #           wget -qO trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_Linux-64bit.tar.gz
-  #           tar -zxvf trivy.tar.gz
-  #           sudo mv trivy /usr/local/bin/
-  #         fi
-          
-  #         # Verify installation
-  #         trivy --version
-
-  #     - name: Run Trivy Vulnerability Scan
-  #       run: |
-  #         echo "Running Trivy scan..."
-  #         trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .
-
-  #     - name: Install License Finder
-  #       run: |
-  #         echo "Installing License Finder..."
-  #         gem install --user-install license_finder
-  #         GEM_PATH=$(ruby -r rubygems -e 'puts Gem.user_dir')/bin
-  #         echo "Adding $GEM_PATH to PATH"
-  #         echo "export PATH=$GEM_PATH:$PATH" >> $HOME/.bashrc
-  #         export PATH=$GEM_PATH:$PATH
-  #         echo "License Finder installed at: $(which license_finder)"
-  #         license_finder version  # Verify installation
-
-  #     - name: Run License Compliance Check
-  #       run: |
-  #         echo "Running License Finder..."
-  #         GEM_PATH=$(ruby -r rubygems -e 'puts Gem.user_dir')/bin
-  #         export PATH=$GEM_PATH:$PATH
-  #         license_finder
-
-  # Use Docker to run security scans
+  # Manual way to run security scans. (docker would add some speed if cached.)
   security_scan:
     if: github.event_name == 'push'  # Only runs on push, not manual triggers
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Run GitLeaks Scan (Secrets Detection)
-        uses: gitleaks/gitleaks-action@v2
-        with:
-          args: detect --verbose --redact
+      - name: Secrets Detection with GitLeaks
+        uses: zricethezav/gitleaks-action@v2
+        continue-on-error: true  # Avoid stopping pipeline on warnings
 
+      # - name: Install Trivy for Security Scanning
+      #   run: |
+      #     echo "Detecting Ubuntu version..."
+      #     UBUNTU_VERSION=$(lsb_release -rs)
+          
+      #     if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
+      #       echo "Ubuntu 24.04 detected, installing Trivy via Snap..."
+      #       sudo snap install trivy
+      #     else
+      #       echo "Installing Trivy from GitHub releases..."
+      #       TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -o '"tag_name": *"v[0-9.]*"' | sed -E 's/"tag_name": *"v?([^"]+)"/\1/')
+      #       wget -qO trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_Linux-64bit.tar.gz
+      #       tar -zxvf trivy.tar.gz
+      #       sudo mv trivy /usr/local/bin/
+      #     fi
+          
+      #     # Verify installation
+      #     trivy --version
+
+      # - name: Run Trivy Vulnerability Scan
+      #   run: |
+      #     echo "Running Trivy scan..."
+      #     trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .
       - name: Run Trivy Scan (Vulnerability Scanner)
         uses: aquasecurity/trivy-action@master
         with:
-          scan-type: "fs"
-          severity: "HIGH,CRITICAL"
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          format: 'table'
+
+      - name: Install License Finder
+        run: |
+          echo "Installing License Finder..."
+          gem install --user-install license_finder
+          GEM_PATH=$(ruby -r rubygems -e 'puts Gem.user_dir')/bin
+          echo "Adding $GEM_PATH to PATH"
+          echo "export PATH=$GEM_PATH:$PATH" >> $HOME/.bashrc
+          export PATH=$GEM_PATH:$PATH
+          echo "License Finder installed at: $(which license_finder)"
+          license_finder version  # Verify installation
 
       - name: Run License Compliance Check
         run: |
-          echo "Running License Finder in a container..."
-          docker run --rm -v $(pwd):/app -w /app ruby:3.2 bash -c "
-            gem install license_finder &&
-            license_finder"
+          echo "Running License Finder..."
+          GEM_PATH=$(ruby -r rubygems -e 'puts Gem.user_dir')/bin
+          export PATH=$GEM_PATH:$PATH
+          license_finder
 
   build:
     needs: security_scan  # Ensures security checks complete before building
