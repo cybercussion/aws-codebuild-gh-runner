@@ -75,12 +75,15 @@ jobs:
         run: |
           echo "Installing License Finder..."
           gem install --user-install license_finder
-          export PATH="$(ruby -r rubygems -e 'puts Gem.user_dir')/bin:$PATH"
+          echo 'export PATH="$HOME/.local/share/gem/ruby/$(ls /usr/share/rubygems-integration/)/bin:$PATH"' >> $HOME/.bashrc
+          export PATH="$HOME/.local/share/gem/ruby/$(ls /usr/share/rubygems-integration/)/bin:$PATH"
+          echo "License Finder installed at: $(which license_finder)"
           license_finder version  # Verify installation
-  
+
       - name: Run License Compliance Check
         run: |
           echo "Running License Finder..."
+          export PATH="$HOME/.local/share/gem/ruby/$(ls /usr/share/rubygems-integration/)/bin:$PATH"
           license_finder
 
   build:
