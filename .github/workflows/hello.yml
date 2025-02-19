@@ -7,15 +7,23 @@ on:
 
   workflow_dispatch:
     inputs:
-      environment:
-        description: "Select the environment to deploy to"
+      debug:
+        description: "Enable Debug Mode?"
         required: true
-        default: "dev"
         type: choice
         options:
-          - dev
-          - stage
-          - perf
+          - "true"
+          - "false"
+      log_level:
+        description: "Log Level"
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - "info"
+          - "debug"
+          - "warn"
+          - "error"
 
 jobs:
   build:
@@ -66,16 +74,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set Deployment Environment
+      - name: Set Deployment Parameters
         run: |
           ENV="${{ github.event.inputs.environment || 'dev' }}"
+          DEBUG_MODE="${{ github.event.inputs.debug || 'false' }}"
+          LOG_LEVEL="${{ github.event.inputs.log_level || 'info' }}"
+          
           echo "Deploying to environment: $ENV"
+          echo "Debug Mode: $DEBUG_MODE"
+          echo "Log Level: $LOG_LEVEL"
+          
+          # Export variables for later use
+          echo "ENV=$ENV" >> $GITHUB_ENV
+          echo "DEBUG_MODE=$DEBUG_MODE" >> $GITHUB_ENV
+          echo "LOG_LEVEL=$LOG_LEVEL" >> $GITHUB_ENV
         shell: bash
 
       - name: Deploy Application
         run: |
-          ENV="${{ github.event.inputs.environment || 'dev' }}"
-          echo "Deploying application to $ENV..."
+          echo "Starting deployment..."
+          echo "Target Environment: $ENV"
+          echo "Debug Mode Enabled: $DEBUG_MODE"
+          echo "Using Log Level: $LOG_LEVEL"
+          
           sleep 3  # Simulating deployment process
+
+          if [[ "$DEBUG_MODE" == "true" ]]; then
+            echo "Debugging enabled! Running extra logs..."
+            # Simulate debug logging
+            echo "Debugging details..."
+          fi
+
           echo "Deployment to $ENV complete!"
         shell: bash
