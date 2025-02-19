@@ -36,7 +36,35 @@ on:
           - "error"
 
 jobs:
+  security_scan:
+    if: github.event_name == 'push'  # Only runs on push, not manual triggers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Secrets Detection with GitLeaks
+        uses: zricethezav/gitleaks-action@v2
+        continue-on-error: true  # Avoid stopping pipeline on warnings
+
+      - name: Install Trivy for Security Scanning
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
+
+      - name: Run Trivy Vulnerability Scan
+        run: |
+          trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .
+
+      - name: Install License Finder
+        run: |
+          gem install license_finder
+
+      - name: Run License Compliance Check
+        run: |
+          license_finder
+
   build:
+    needs: security_scan  # Ensures security checks complete before building
     runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       matrix:
