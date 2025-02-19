@@ -48,29 +48,37 @@ jobs:
         uses: zricethezav/gitleaks-action@v2
         continue-on-error: true  # Avoid stopping pipeline on warnings
 
-      - name: Install Trivy for Security Scanning
-        run: |
-          echo "Detecting Ubuntu version..."
-          UBUNTU_VERSION=$(lsb_release -rs)
+      # - name: Install Trivy for Security Scanning
+      #   run: |
+      #     echo "Detecting Ubuntu version..."
+      #     UBUNTU_VERSION=$(lsb_release -rs)
           
-          if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
-            echo "Ubuntu 24.04 detected, installing Trivy via Snap..."
-            sudo snap install trivy
-          else
-            echo "Installing Trivy from GitHub releases..."
-            TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -o '"tag_name": *"v[0-9.]*"' | sed -E 's/"tag_name": *"v?([^"]+)"/\1/')
-            wget -qO trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_Linux-64bit.tar.gz
-            tar -zxvf trivy.tar.gz
-            sudo mv trivy /usr/local/bin/
-          fi
+      #     if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
+      #       echo "Ubuntu 24.04 detected, installing Trivy via Snap..."
+      #       sudo snap install trivy
+      #     else
+      #       echo "Installing Trivy from GitHub releases..."
+      #       TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -o '"tag_name": *"v[0-9.]*"' | sed -E 's/"tag_name": *"v?([^"]+)"/\1/')
+      #       wget -qO trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_Linux-64bit.tar.gz
+      #       tar -zxvf trivy.tar.gz
+      #       sudo mv trivy /usr/local/bin/
+      #     fi
           
-          # Verify installation
-          trivy --version
+      #     # Verify installation
+      #     trivy --version
 
-      - name: Run Trivy Vulnerability Scan
-        run: |
-          echo "Running Trivy scan..."
-          trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .
+      # - name: Run Trivy Vulnerability Scan
+      #   run: |
+      #     echo "Running Trivy scan..."
+      #     trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .
+      - name: Run Trivy Scan (Vulnerability Scanner)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-ref: '.'
+          scan-type: 'fs'  # Ensure we scan the filesystem, not an image
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
 
       - name: Upload Trivy Report
         uses: actions/upload-artifact@v4
