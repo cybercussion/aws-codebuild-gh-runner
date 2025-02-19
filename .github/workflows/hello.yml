@@ -49,10 +49,14 @@ jobs:
 
       - name: Install Trivy for Security Scanning
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh
+          echo "Installing Trivy..."
+          sudo apt update && sudo apt install wget -y
+          wget -qO- https://github.com/aquasecurity/trivy/releases/latest/download/trivy_Linux-64bit.tar.gz | tar zxvf - -C /usr/local/bin
+          trivy --version  # Verify installation
 
       - name: Run Trivy Vulnerability Scan
         run: |
+          echo "Running Trivy scan..."
           trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .
 
       - name: Install License Finder
