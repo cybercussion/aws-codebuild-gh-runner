@@ -7,9 +7,19 @@ on:
 
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Select the environment to deploy to"
+        required: true
+        default: "dev"
+        type: choice
+        options:
+          - dev
+          - stage
+          - perf
       debug:
         description: "Enable Debug Mode?"
         required: true
+        default: "false"
         type: choice
         options:
           - "true"
@@ -28,42 +38,47 @@ on:
 jobs:
   build:
     runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    strategy:
+      matrix:
+        service: [service-a, service-b, service-c]  # List of subfolders to build
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Print GitHub Context
-        run: echo "Running on AWS CodeBuild"
-
-      - name: Build
+      - name: Build ${{ matrix.service }}
         run: |
-          echo "Building project..."
+          echo "Building ${{ matrix.service }}..."
+          cd services/${{ matrix.service }}
           sleep 5  # Simulating a build step
-          echo "Build complete!"
+          echo "Build complete for ${{ matrix.service }}!"
 
       - name: Save Build Artifacts
         run: |
-          mkdir -p build_artifacts
-          echo "Build output" > build_artifacts/output.txt
-          echo "Build successful" > build_artifacts/status.txt
+          mkdir -p build_artifacts/${{ matrix.service }}
+          echo "Build output for ${{ matrix.service }}" > build_artifacts/${{ matrix.service }}/output.txt
+          echo "Build successful" > build_artifacts/${{ matrix.service }}/status.txt
         shell: bash
 
   test:
     needs: build
     runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    strategy:
+      matrix:
+        service: [service-a, service-b, service-c]  # Matches build matrix
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Tests
+      - name: Run Tests for ${{ matrix.service }}
         run: |
-          echo "Running tests..."
+          echo "Running tests for ${{ matrix.service }}..."
+          cd services/${{ matrix.service }}
           sleep 3  # Simulating test execution
-          echo "Tests complete!"
+          echo "Tests complete for ${{ matrix.service }}!"
 
       - name: Test Results
         run: |
-          echo "All tests passed!"
+          echo "All tests passed for ${{ matrix.service }}!"
         shell: bash
 
   deploy:
@@ -83,7 +98,7 @@ jobs:
           echo "Deploying to environment: $ENV"
           echo "Debug Mode: $DEBUG_MODE"
           echo "Log Level: $LOG_LEVEL"
-          
+
           # Export variables for later use
           echo "ENV=$ENV" >> $GITHUB_ENV
           echo "DEBUG_MODE=$DEBUG_MODE" >> $GITHUB_ENV
