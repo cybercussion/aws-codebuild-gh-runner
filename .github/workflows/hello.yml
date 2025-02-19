@@ -80,7 +80,7 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: trivy-scan-results
           path: trivy-results.sarif
