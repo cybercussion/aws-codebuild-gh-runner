@@ -111,9 +111,11 @@ jobs:
           severity: "HIGH,CRITICAL"
 
       - name: Run License Compliance Check
-        uses: docker://pivotalpa/licensefinder
-        with:
-          args: license_finder
+        run: |
+          echo "Running License Finder in a container..."
+          docker run --rm -v $(pwd):/app -w /app ruby:3.2 bash -c "
+            gem install license_finder &&
+            license_finder"
 
   build:
     needs: security_scan  # Ensures security checks complete before building
