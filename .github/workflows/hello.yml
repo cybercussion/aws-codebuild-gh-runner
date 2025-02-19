@@ -47,14 +47,11 @@ jobs:
         uses: zricethezav/gitleaks-action@v2
         continue-on-error: true  # Avoid stopping pipeline on warnings
 
-      - name: Install Trivy for Security Scanning
+      - name: Install Trivy Manually
         run: |
-          echo "Installing Trivy..."
-          sudo apt update
-          sudo apt install -y curl
-          curl -sfL https://aquasecurity.github.io/trivy-repo/deb | sudo tee /etc/apt/sources.list.d/trivy.list
-          sudo apt update
-          sudo apt install -y trivy
+          echo "Installing Trivy from GitHub releases..."
+          wget -qO trivy.tar.gz https://github.com/aquasecurity/trivy/releases/latest/download/trivy_Linux-64bit.tar.gz
+          sudo tar -zxvf trivy.tar.gz -C /usr/local/bin trivy
           trivy --version  # Verify installation
 
       - name: Run Trivy Vulnerability Scan
