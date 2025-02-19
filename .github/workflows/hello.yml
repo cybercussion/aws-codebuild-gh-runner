@@ -1,4 +1,4 @@
-name: CodeBuild Test
+name: CodeBuild Multi-Stage Pipeline
 
 on:
   push:
@@ -7,10 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on:
-        # This "github-runner" name matters.  Has to match the CodeBuild Runner you made.
-        # Also check your settings->webhooks (codebuild creates one if codestar connection is setup correctly)
-      - codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -23,3 +20,42 @@ jobs:
           echo "Building project..."
           sleep 5  # Simulating a build step
           echo "Build complete!"
+
+      - name: Save Build Artifacts
+        run: |
+          mkdir -p build_artifacts
+          echo "Build output" > build_artifacts/output.txt
+          echo "Build successful" > build_artifacts/status.txt
+        shell: bash
+
+  test:
+    needs: build
+    runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Tests
+        run: |
+          echo "Running tests..."
+          sleep 3  # Simulating test execution
+          echo "Tests complete!"
+
+      - name: Test Results
+        run: |
+          echo "All tests passed!"
+        shell: bash
+
+  deploy:
+    needs: test
+    runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy Application
+        run: |
+          echo "Deploying application..."
+          sleep 3  # Simulating deployment process
+          echo "Deployment complete!"
+        shell: bash
