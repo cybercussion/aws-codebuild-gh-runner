@@ -61,18 +61,20 @@ jobs:
   deploy:
     needs: test
     runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set Deployment Environment
         run: |
-          echo "Deploying to environment: ${{ github.event.inputs.environment }}"
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          echo "Deploying to environment: $ENV"
+        shell: bash
 
       - name: Deploy Application
         run: |
-          ENV="${{ github.event.inputs.environment }}"
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
           echo "Deploying application to $ENV..."
           sleep 3  # Simulating deployment process
           echo "Deployment to $ENV complete!"
