@@ -89,47 +89,6 @@ jobs:
           export PATH="$(ruby -r rubygems -e 'puts Gem.user_dir')/bin:$PATH"
           license_finder
 
-  build:
-    needs: security_scan
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
-    strategy:
-      matrix:
-        service: [service-a, service-b, service-c]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Dependencies for ${{ matrix.service }}
-        run: |
-          cd services/${{ matrix.service }}
-
-          # Check if it's a Python project
-          if [ -f "app/requirements.txt" ]; then
-            echo "Detected Python service. Installing dependencies..."
-            pip install -r app/requirements.txt
-          fi
-
-          # Check if it's a Node.js project
-          if [ -f "src/package.json" ]; then
-            echo "Detected Node.js service. Installing dependencies..."
-            npm install --no-progress
-          fi
-
-      - name: Build ${{ matrix.service }}
-        run: |
-          cd services/${{ matrix.service }}
-          echo "Building ${{ matrix.service }}..."
-          sleep 5
-          echo "Build complete for ${{ matrix.service }}!"
-
-      - name: Save Build Artifacts
-        run: |
-          mkdir -p build_artifacts/${{ matrix.service }}
-          echo "Build output for ${{ matrix.service }}" > build_artifacts/${{ matrix.service }}/output.txt
-          echo "Build successful" > build_artifacts/${{ matrix.service }}/status.txt
-        shell: bash
-
   codeql_analysis:
     runs-on: ubuntu-latest
     steps:
@@ -145,6 +104,60 @@ jobs:
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
+
+  build:
+    needs: security_scan
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
+    strategy:
+      matrix:
+        service: [service-a, service-b, service-c]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies for ${{ matrix.service }}
+        run: |
+          cd services/${{ matrix.service }}
+
+          # Python service (service-a)
+          if [ -f "app/requirements.txt" ]; then
+            echo "Detected Python service. Installing dependencies..."
+            pip install --progress-bar off -r app/requirements.txt
+          fi
+
+          # Node.js service (service-b, service-c)
+          if [ -f "src/package.json" ]; then
+            echo "Detected Node.js service. Installing dependencies..."
+            npm install --no-progress
+          fi
+
+      - name: Build ${{ matrix.service }}
+        run: |
+          cd services/${{ matrix.service }}
+          echo "Building ${{ matrix.service }}..."
+
+          # Python service (service-a) - Package it
+          if [ -f "app/requirements.txt" ]; then
+            echo "Packaging Python application..."
+            mkdir -p dist
+            cp -r app dist/
+            echo "Python service packaged."
+          fi
+
+          # Node.js services (service-b, service-c) - Run build script
+          if [ -f "src/package.json" ]; then
+            echo "Building Node.js application..."
+            npm run build || echo "No build script found, skipping..."
+            echo "Node.js service built."
+          fi
+
+      - name: Save Build Artifacts
+        run: |
+          mkdir -p build_artifacts/${{ matrix.service }}
+          tar -czf build_artifacts/${{ matrix.service }}/build.tar.gz -C services/${{ matrix.service }} .
+          echo "Build successful for ${{ matrix.service }}" > build_artifacts/${{ matrix.service }}/status.txt
+        shell: bash
 
   test:
     needs: build
