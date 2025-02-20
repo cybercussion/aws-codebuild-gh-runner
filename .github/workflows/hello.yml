@@ -5,6 +5,15 @@ on:
     branches:
       - main  # Triggers automatically on push to main
 
+  pull_request:
+    branches:
+      - main
+      - develop
+    types:
+      - opened
+      - synchronize
+      - ready_for_review
+
   workflow_dispatch:
     inputs:
       environment:
@@ -36,46 +45,24 @@ on:
           - "error"
 
 jobs:
-  # Manual way to run security scans. (docker would add some speed if cached.)
   security_scan:
-    if: github.event_name == 'push'  # Only runs on push, not manual triggers
+    if: github.event_name == 'push' || github.event_name == 'pull_request'  # Runs on PRs too
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
 
       - name: Secrets Detection with GitLeaks
         uses: zricethezav/gitleaks-action@v2
         continue-on-error: true  # Avoid stopping pipeline on warnings
 
-      # - name: Install Trivy for Security Scanning
-      #   run: |
-      #     echo "Detecting Ubuntu version..."
-      #     UBUNTU_VERSION=$(lsb_release -rs)
-          
-      #     if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
-      #       echo "Ubuntu 24.04 detected, installing Trivy via Snap..."
-      #       sudo snap install trivy
-      #     else
-      #       echo "Installing Trivy from GitHub releases..."
-      #       TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | grep -o '"tag_name": *"v[0-9.]*"' | sed -E 's/"tag_name": *"v?([^"]+)"/\1/')
-      #       wget -qO trivy.tar.gz https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_Linux-64bit.tar.gz
-      #       tar -zxvf trivy.tar.gz
-      #       sudo mv trivy /usr/local/bin/
-      #     fi
-          
-      #     # Verify installation
-      #     trivy --version
-
-      # - name: Run Trivy Vulnerability Scan
-      #   run: |
-      #     echo "Running Trivy scan..."
-      #     trivy fs --severity HIGH,CRITICAL --exit-code 1 --no-progress .
       - name: Run Trivy Scan (Vulnerability Scanner)
         uses: aquasecurity/trivy-action@master
         with:
           scan-ref: '.'
-          scan-type: 'fs'  # Ensure we scan the filesystem, not an image
+          scan-type: 'fs'
           severity: 'HIGH,CRITICAL'
           format: 'sarif'
           output: 'trivy-results.sarif'
@@ -88,37 +75,47 @@ jobs:
 
       - name: Install License Finder
         run: |
-          echo "Installing License Finder..."
           gem install --user-install license_finder
-          GEM_PATH=$(ruby -r rubygems -e 'puts Gem.user_dir')/bin
-          echo "Adding $GEM_PATH to PATH"
-          echo "export PATH=$GEM_PATH:$PATH" >> $HOME/.bashrc
-          export PATH=$GEM_PATH:$PATH
-          echo "License Finder installed at: $(which license_finder)"
-          license_finder version  # Verify installation
+          export PATH="$(ruby -r rubygems -e 'puts Gem.user_dir')/bin:$PATH"
+          license_finder version
 
       - name: Run License Compliance Check
         run: |
-          echo "Running License Finder..."
-          GEM_PATH=$(ruby -r rubygems -e 'puts Gem.user_dir')/bin
-          export PATH=$GEM_PATH:$PATH
+          export PATH="$(ruby -r rubygems -e 'puts Gem.user_dir')/bin:$PATH"
           license_finder
 
   build:
-    needs: security_scan  # Ensures security checks complete before building
+    needs: security_scan
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       matrix:
-        service: [service-a, service-b, service-c]  # List of subfolders to build
+        service: [service-a, service-b, service-c]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install Dependencies for ${{ matrix.service }}
+        run: |
+          cd services/${{ matrix.service }}
+
+          # Check if it's a Python project
+          if [ -f "app/requirements.txt" ]; then
+            echo "Detected Python service. Installing dependencies..."
+            pip install -r app/requirements.txt
+          fi
+
+          # Check if it's a Node.js project
+          if [ -f "src/package.json" ]; then
+            echo "Detected Node.js service. Installing dependencies..."
+            npm install --no-progress
+          fi
+
       - name: Build ${{ matrix.service }}
         run: |
-          echo "Building ${{ matrix.service }}..."
           cd services/${{ matrix.service }}
-          sleep 5  # Simulating a build step
+          echo "Building ${{ matrix.service }}..."
+          sleep 5
           echo "Build complete for ${{ matrix.service }}!"
 
       - name: Save Build Artifacts
@@ -128,12 +125,27 @@ jobs:
           echo "Build successful" > build_artifacts/${{ matrix.service }}/status.txt
         shell: bash
 
+  codeql_analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: 'javascript, python'
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
   test:
     needs: build
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
     strategy:
       matrix:
-        service: [service-a, service-b, service-c]  # Matches build matrix
+        service: [service-a, service-b, service-c]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -142,7 +154,7 @@ jobs:
         run: |
           echo "Running tests for ${{ matrix.service }}..."
           cd services/${{ matrix.service }}
-          sleep 3  # Simulating test execution
+          sleep 3
           echo "Tests complete for ${{ matrix.service }}!"
 
       - name: Test Results
@@ -152,8 +164,8 @@ jobs:
 
   deploy:
     needs: test
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'  # Prevent deployment on PRs
     runs-on: codebuild-github-runner-${{ github.run_id }}-${{ github.run_attempt }}
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -181,13 +193,6 @@ jobs:
           echo "Debug Mode Enabled: $DEBUG_MODE"
           echo "Using Log Level: $LOG_LEVEL"
           
-          sleep 3  # Simulating deployment process
-
-          if [[ "$DEBUG_MODE" == "true" ]]; then
-            echo "Debugging enabled! Running extra logs..."
-            # Simulate debug logging
-            echo "Debugging details..."
-          fi
-
+          sleep 3
           echo "Deployment to $ENV complete!"
         shell: bash
